@@ -1,0 +1,93 @@
+# =============================================================================
+# Lightning.AI Deployment Configuration for Docling Service
+# =============================================================================
+# 
+# Deploy with: lightning deploy deployments/lightning/lightning.yaml
+# 
+# This configuration provides:
+# - GPU-accelerated document processing (T4 by default)
+# - Auto-scale to zero when idle (cost optimization)
+# - Up to 3 replicas for handling load spikes
+# =============================================================================
+
+name: docling-service
+
+services:
+  docling:
+    # Official Docling GPU image with CUDA 12.8 support
+    image: quay.io/docling-project/docling-serve-cu128
+    
+    # Service port (Docling default)
+    port: 5001
+    
+    # GPU Configuration
+    # Options: T4 (budget), A10G (balanced), A100 (high performance)
+    gpu: T4
+    
+    # Auto-scaling configuration
+    min_replicas: 0   # Scale to zero when idle (saves costs)
+    max_replicas: 3   # Maximum instances for handling load
+    
+    # Scale-up trigger: requests waiting > 2 for 30 seconds
+    scale_up_threshold: 2
+    
+    # Scale-down: no requests for 5 minutes
+    scale_down_delay: 300
+    
+    # Health check configuration
+    health_check:
+      path: /health
+      interval: 30
+      timeout: 10
+      unhealthy_threshold: 3
+    
+    # Environment variables
+    env:
+      # Enable the web UI for debugging/testing
+      DOCLING_SERVE_ENABLE_UI: "true"
+      
+      # Number of worker processes (adjust based on GPU memory)
+      DOCLING_SERVE_ENG_LOC_NUM_WORKERS: "2"
+      
+      # Timeout configurations (seconds)
+      DOCLING_SERVE_MAX_SYNC_WAIT: "300"
+      DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT: "300"
+      
+      # CPU threading optimization
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      
+      # CUDA optimization
+      CUDA_VISIBLE_DEVICES: "0"
+
+# =============================================================================
+# Alternative configurations (uncomment to use)
+# =============================================================================
+
+# High-performance configuration with A10G GPU:
+# services:
+#   docling:
+#     image: quay.io/docling-project/docling-serve-cu128
+#     port: 5001
+#     gpu: A10G
+#     min_replicas: 1   # Keep one instance warm
+#     max_replicas: 5
+#     env:
+#       DOCLING_SERVE_ENABLE_UI: "true"
+#       DOCLING_SERVE_ENG_LOC_NUM_WORKERS: "4"
+#       OMP_NUM_THREADS: "8"
+#       MKL_NUM_THREADS: "8"
+
+# CPU-only configuration (for testing/low volume):
+# services:
+#   docling:
+#     image: quay.io/docling-project/docling-serve-cpu
+#     port: 5001
+#     cpu: 4
+#     memory: 16Gi
+#     min_replicas: 0
+#     max_replicas: 2
+#     env:
+#       DOCLING_SERVE_ENABLE_UI: "true"
+#       DOCLING_SERVE_ENG_LOC_NUM_WORKERS: "2"
+#       OMP_NUM_THREADS: "4"

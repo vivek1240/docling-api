@@ -1,0 +1,136 @@
+# =============================================================================
+# Docker Compose Configuration for Docling Service (GPU)
+# =============================================================================
+#
+# Usage:
+#   docker-compose up -d              # Start services
+#   docker-compose logs -f docling    # View logs
+#   docker-compose down               # Stop services
+#
+# Prerequisites:
+#   - Docker with NVIDIA Container Toolkit installed
+#   - NVIDIA GPU with CUDA 12.x drivers
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Docling Document Processing Service (GPU)
+  # ---------------------------------------------------------------------------
+  docling:
+    image: quay.io/docling-project/docling-serve-cu128
+    container_name: docling-gpu
+    ports:
+      - "5001:5001"
+    environment:
+      # Enable web UI for debugging
+      - DOCLING_SERVE_ENABLE_UI=true
+      # Number of worker processes
+      - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=2
+      # Timeout settings (seconds)
+      - DOCLING_SERVE_MAX_SYNC_WAIT=300
+      - DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT=300
+      # CPU threading optimization
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+      # CUDA settings
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      # Persist model cache to avoid re-downloading
+      - docling_cache:/opt/app-root/src/.cache
+      - docling_models:/opt/app-root/src/.docling
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # API Gateway Service (FastAPI Wrapper)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.api
+    container_name: docprocess-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DOCLING_BACKEND_URL=http://docling:5001
+      - DATABASE_URL=sqlite:///./data/docprocess.db
+      - REDIS_URL=redis://redis:6379/0
+      - API_SECRET_KEY=${API_SECRET_KEY:-change-me-in-production}
+      - LOG_LEVEL=INFO
+    depends_on:
+      docling:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - api_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Redis (for rate limiting and caching)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: docprocess-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Nginx Reverse Proxy (Optional - for production)
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: docprocess-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/docling.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  docling_cache:
+    name: docling_cache
+  docling_models:
+    name: docling_models
+  api_data:
+    name: docprocess_api_data
+  redis_data:
+    name: docprocess_redis_data
+
+networks:
+  default:
+    name: docprocess_network

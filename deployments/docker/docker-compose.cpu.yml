@@ -1,0 +1,100 @@
+# =============================================================================
+# Docker Compose Configuration for Docling Service (CPU Only)
+# =============================================================================
+#
+# Use this configuration when GPU is not available.
+# Note: Processing will be 4-6x slower than GPU version.
+#
+# Usage:
+#   docker-compose -f docker-compose.cpu.yml up -d
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Docling Document Processing Service (CPU)
+  # ---------------------------------------------------------------------------
+  docling:
+    image: quay.io/docling-project/docling-serve-cpu
+    container_name: docling-cpu
+    ports:
+      - "5001:5001"
+    environment:
+      # Enable web UI
+      - DOCLING_SERVE_ENABLE_UI=true
+      # Number of worker processes (increase for better CPU utilization)
+      - DOCLING_SERVE_ENG_LOC_NUM_WORKERS=2
+      # Timeout settings (longer for CPU processing)
+      - DOCLING_SERVE_MAX_SYNC_WAIT=600
+      - DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT=600
+      # CPU threading optimization
+      - OMP_NUM_THREADS=8
+      - MKL_NUM_THREADS=8
+    volumes:
+      - docling_cache:/opt/app-root/src/.cache
+      - docling_models:/opt/app-root/src/.docling
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+        reservations:
+          cpus: '4'
+          memory: 8G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Longer startup for CPU
+
+  # ---------------------------------------------------------------------------
+  # API Gateway Service
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.api
+    container_name: docprocess-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DOCLING_BACKEND_URL=http://docling:5001
+      - DOCLING_TIMEOUT=600  # Longer timeout for CPU
+      - DATABASE_URL=sqlite:///./data/docprocess.db
+      - REDIS_URL=redis://redis:6379/0
+      - API_SECRET_KEY=${API_SECRET_KEY:-change-me-in-production}
+      - LOG_LEVEL=INFO
+    depends_on:
+      docling:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - api_data:/app/data
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: docprocess-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  docling_cache:
+  docling_models:
+  api_data:
+  redis_data:
+
+networks:
+  default:
+    name: docprocess_network
