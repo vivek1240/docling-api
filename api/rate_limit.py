@@ -37,8 +37,11 @@ def create_limiter() -> Limiter:
     """Create and configure the rate limiter."""
     settings = get_settings()
     
-    # Use Redis if available, otherwise in-memory
-    storage_uri = settings.redis_url if settings.redis_url else "memory://"
+    # Use Redis if available and not localhost, otherwise in-memory
+    # In cloud deployments, localhost Redis won't work
+    storage_uri = "memory://"
+    if settings.redis_url and "localhost" not in settings.redis_url and "127.0.0.1" not in settings.redis_url:
+        storage_uri = settings.redis_url
     
     return Limiter(
         key_func=_get_key_func,
