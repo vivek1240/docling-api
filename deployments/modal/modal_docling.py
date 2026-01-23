@@ -62,6 +62,7 @@ model_cache = modal.Volume.from_name("docling-model-cache", create_if_missing=Tr
     memory=16384,                # 16GB RAM
     scaledown_window=120,        # Keep warm for 2 minutes
     volumes={"/cache": model_cache},
+    allow_concurrent_inputs=10,  # Allow concurrent requests (limited by GPU memory)
 )
 def process_document(
     file_bytes: bytes,
@@ -140,6 +141,7 @@ def process_document(
     memory=16384,
     scaledown_window=120,
     volumes={"/cache": model_cache},
+    allow_concurrent_inputs=10,  # Allow concurrent requests (limited by GPU memory)
 )
 def process_url(
     url: str,
@@ -251,6 +253,7 @@ def process_batch(
     memory=16384,
     scaledown_window=120,
     volumes={"/cache": model_cache},
+    allow_concurrent_inputs=10,  # Allow concurrent requests (limited by GPU memory)
 )
 @modal.fastapi_endpoint(method="POST")
 def convert_endpoint(request: dict) -> dict:

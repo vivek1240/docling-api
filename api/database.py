@@ -50,8 +50,22 @@ def get_engine():
             _engine = create_async_engine(
                 url,
                 echo=get_settings().api_debug,
-                connect_args={"check_same_thread": False},
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 30,  # Wait up to 30s for locks
+                },
+                pool_size=1,  # SQLite works best with single connection
+                max_overflow=0,
             )
+            
+            # Enable WAL mode for better concurrency
+            @event.listens_for(_engine.sync_engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
         else:
             _engine = create_async_engine(
                 url,
