@@ -112,7 +112,7 @@ class ConversionOptions(BaseModel):
     
     # VLM Options (Vision Language Model for advanced parsing)
     enable_vlm: bool = Field(default=False, description="Use Vision Language Model for advanced parsing")
-    vlm_model: VLMModel = Field(default=VLMModel.GPT_4_1_MINI, description="VLM model to use")
+    vlm_model: str = Field(default="gpt-4.1-mini", description="VLM model to use (gpt-4.1-mini, gpt-5-mini, gpt-5-nano, gpt-4.1-nano, o4-mini)")
     vlm_api_key: Optional[str] = Field(default=None, description="Custom VLM API key (optional, uses default if not provided)")
 
 

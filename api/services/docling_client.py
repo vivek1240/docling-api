@@ -139,7 +139,7 @@ class DoclingClient:
                     # VLM options
                     "enable_vlm": options.enable_vlm,
                     "vlm_api_key": vlm_api_key,
-                    "vlm_model": options.vlm_model.value if hasattr(options.vlm_model, 'value') else options.vlm_model,
+                    "vlm_model": options.vlm_model,
                 },
             )
             response.raise_for_status()
@@ -234,7 +234,7 @@ class DoclingClient:
                     # VLM options
                     "enable_vlm": options.enable_vlm,
                     "vlm_api_key": vlm_api_key,
-                    "vlm_model": options.vlm_model.value if hasattr(options.vlm_model, 'value') else options.vlm_model,
+                    "vlm_model": options.vlm_model,
                 },
             )
             response.raise_for_status()
@@ -274,8 +274,45 @@ class DoclingClient:
         """
         options = options or ConversionOptions()
         start_time = time.time()
+        settings = get_settings()
         
-        # Decode base64 and send as file
+        # Determine VLM API key (user's key or default)
+        vlm_api_key = options.vlm_api_key or settings.default_vlm_api_key
+        
+        # Use Modal if configured
+        if self.use_modal and self.modal_endpoint:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.modal_endpoint.replace("/convert_endpoint", "/convert_file_endpoint"),
+                    json={
+                        "file_base64": data,  # Already base64 encoded
+                        "filename": filename,
+                        "output_format": options.output_format.value if options.output_format else "markdown",
+                        # OCR options
+                        "enable_ocr": options.enable_ocr,
+                        "force_full_page_ocr": options.force_full_page_ocr,
+                        "enable_table_extraction": options.enable_table_extraction,
+                        # VLM options
+                        "enable_vlm": options.enable_vlm,
+                        "vlm_api_key": vlm_api_key,
+                        "vlm_model": options.vlm_model,
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                
+                processing_time = int((time.time() - start_time) * 1000)
+                
+                return {
+                    "source": filename,
+                    "status": result.get("status", "success"),
+                    "pages": result.get("pages", 1),
+                    "markdown": result.get("markdown"),
+                    "json": result.get("json"),
+                    "processing_time_ms": processing_time,
+                }
+        
+        # Use local Docker backend (fallback)
         file_bytes = base64.b64decode(data)
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:

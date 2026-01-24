@@ -7,6 +7,8 @@ Core document conversion endpoints with database-backed credit tracking.
 
 import time
 import uuid
+from typing import Optional
+
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status, Request
 
 from api.auth import get_current_api_key, get_key_service
@@ -135,6 +137,11 @@ async def convert_from_file(
     request: Request,
     file: UploadFile = File(..., description="Document file to convert"),
     output_format: OutputFormat = OutputFormat.MARKDOWN,
+    enable_ocr: bool = False,
+    force_full_page_ocr: bool = False,
+    enable_vlm: bool = False,
+    vlm_api_key: Optional[str] = None,
+    vlm_model: str = "gpt-4.1-mini",
     auth: tuple = Depends(get_current_api_key),
     key_service: APIKeyService = Depends(get_key_service),
 ) -> ConversionResponse:
@@ -143,6 +150,13 @@ async def convert_from_file(
     
     Supports PDF, DOCX, PPTX, HTML, and image files.
     Maximum file size is configured by the server (default 100MB).
+    
+    Options:
+    - enable_ocr: Enable OCR to extract text from images
+    - force_full_page_ocr: Force OCR on entire page (for scanned docs)
+    - enable_vlm: Use Vision Language Model for advanced parsing
+    - vlm_api_key: Custom VLM API key (optional, uses default if not provided)
+    - vlm_model: VLM model to use (gpt-4.1-mini, gpt-5-mini, etc.)
     """
     api_key, raw_key = auth
     request_id = str(uuid.uuid4())
@@ -162,7 +176,14 @@ async def convert_from_file(
     await file.seek(0)
     
     client = get_docling_client()
-    options = ConversionOptions(output_format=output_format)
+    options = ConversionOptions(
+        output_format=output_format,
+        enable_ocr=enable_ocr,
+        force_full_page_ocr=force_full_page_ocr,
+        enable_vlm=enable_vlm,
+        vlm_api_key=vlm_api_key,
+        vlm_model=vlm_model,
+    )
     
     try:
         result = await client.convert_from_file(file.file, file.filename or "document", options)
