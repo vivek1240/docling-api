@@ -99,8 +99,7 @@ def create_converter(
             from docling.pipeline.vlm_pipeline import VlmPipeline
             
             if vlm_provider == "granite":
-                # Use GraniteDocling - FREE, runs locally on GPU
-                # Default VlmPipeline uses GraniteDocling model
+                # Use GraniteDocling - FREE, runs locally on GPU (experimental, slow)
                 return DocumentConverter(
                     format_options={
                         InputFormat.PDF: PdfFormatOption(
@@ -109,8 +108,13 @@ def create_converter(
                     }
                 )
             
-            elif vlm_provider == "openai" and vlm_api_key:
-                # Use OpenAI API - PAID, highest quality
+            elif vlm_provider == "openai":
+                # Use OpenAI API - requires API key
+                if not vlm_api_key:
+                    print("Warning: OpenAI VLM requested but no API key provided. Using standard converter.")
+                    # Fall back to standard converter (NOT granite)
+                    return DocumentConverter()
+                
                 from docling.datamodel.pipeline_options_vlm_model import ApiVlmOptions, ResponseFormat
                 
                 pipeline_options = VlmPipelineOptions(enable_remote_services=True)
@@ -132,16 +136,11 @@ def create_converter(
                         )
                     }
                 )
+            
             else:
-                print(f"VLM provider '{vlm_provider}' requires API key, falling back to granite")
-                # Fallback to granite if openai requested but no key
-                return DocumentConverter(
-                    format_options={
-                        InputFormat.PDF: PdfFormatOption(
-                            pipeline_cls=VlmPipeline,
-                        )
-                    }
-                )
+                # Unknown provider - use standard converter
+                print(f"Unknown VLM provider '{vlm_provider}'. Using standard converter.")
+                return DocumentConverter()
                 
         except ImportError as e:
             print(f"VLM pipeline not available, falling back to standard: {e}")
