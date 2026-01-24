@@ -140,7 +140,7 @@ async def convert_from_file(
     enable_ocr: bool = False,
     force_full_page_ocr: bool = False,
     enable_vlm: bool = False,
-    vlm_provider: str = "granite",
+    vlm_provider: str = "openai",
     vlm_api_key: Optional[str] = None,
     vlm_model: str = "gpt-4.1-mini",
     auth: tuple = Depends(get_current_api_key),
@@ -156,7 +156,7 @@ async def convert_from_file(
     - enable_ocr: Enable OCR to extract text from images
     - force_full_page_ocr: Force OCR on entire page (for scanned docs)
     - enable_vlm: Use Vision Language Model for advanced parsing
-    - vlm_provider: 'granite' (free, local GPU) or 'openai' (paid, highest quality)
+    - vlm_provider: 'openai' (recommended) or 'granite' (experimental, slow)
     - vlm_api_key: Custom OpenAI API key (optional, uses default if not provided)
     - vlm_model: OpenAI model to use (gpt-4.1-mini, gpt-5-mini, etc.)
     """

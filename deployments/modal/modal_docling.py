@@ -69,7 +69,7 @@ def create_converter(
     force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
     enable_vlm: bool = False,
-    vlm_provider: str = "granite",
+    vlm_provider: str = "openai",
     vlm_api_key: Optional[str] = None,
     vlm_model: str = "gpt-4.1-mini",
 ):
@@ -172,7 +172,7 @@ def process_document_with_options(
     force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
     enable_vlm: bool = False,
-    vlm_provider: str = "granite",
+    vlm_provider: str = "openai",
     vlm_api_key: Optional[str] = None,
     vlm_model: str = "gpt-4.1-mini",
     is_url: bool = True,
@@ -270,7 +270,7 @@ def convert_endpoint(request: dict) -> dict:
         - force_full_page_ocr: Force OCR on entire page (default: false)
         - enable_table_extraction: Enable table extraction (default: true)
         - enable_vlm: Use VLM for advanced parsing (default: false)
-        - vlm_provider: 'granite' (free, local GPU) or 'openai' (paid) (default: 'granite')
+        - vlm_provider: 'openai' (recommended) or 'granite' (experimental) (default: 'openai')
         - vlm_api_key: API key for OpenAI VLM (optional, required if vlm_provider='openai')
         - vlm_model: OpenAI model name (default: 'gpt-4.1-mini')
     
@@ -288,7 +288,7 @@ def convert_endpoint(request: dict) -> dict:
         force_full_page_ocr=request.get("force_full_page_ocr", False),
         enable_table_extraction=request.get("enable_table_extraction", True),
         enable_vlm=request.get("enable_vlm", False),
-        vlm_provider=request.get("vlm_provider", "granite"),
+        vlm_provider=request.get("vlm_provider", "openai"),
         vlm_api_key=request.get("vlm_api_key"),
         vlm_model=request.get("vlm_model", "gpt-4.1-mini"),
         is_url=True,
@@ -317,7 +317,7 @@ def convert_file_endpoint(request: dict) -> dict:
         - force_full_page_ocr: Force OCR on entire page (default: false)
         - enable_table_extraction: Enable table extraction (default: true)
         - enable_vlm: Use VLM for advanced parsing (default: false)
-        - vlm_provider: 'granite' (free, local GPU) or 'openai' (paid) (default: 'granite')
+        - vlm_provider: 'openai' (recommended) or 'granite' (experimental) (default: 'openai')
         - vlm_api_key: API key for OpenAI VLM (optional, required if vlm_provider='openai')
         - vlm_model: OpenAI model name (default: 'gpt-4.1-mini')
     
@@ -354,7 +354,7 @@ def convert_file_endpoint(request: dict) -> dict:
                 force_full_page_ocr=request.get("force_full_page_ocr", False),
                 enable_table_extraction=request.get("enable_table_extraction", True),
                 enable_vlm=request.get("enable_vlm", False),
-                vlm_provider=request.get("vlm_provider", "granite"),
+                vlm_provider=request.get("vlm_provider", "openai"),
                 vlm_api_key=request.get("vlm_api_key"),
                 vlm_model=request.get("vlm_model", "gpt-4.1-mini"),
                 is_url=False,

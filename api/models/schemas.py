@@ -118,7 +118,7 @@ class ConversionOptions(BaseModel):
     
     # VLM Options (Vision Language Model for advanced parsing)
     enable_vlm: bool = Field(default=False, description="Use Vision Language Model for advanced parsing")
-    vlm_provider: str = Field(default="granite", description="VLM provider: 'granite' (free, local GPU) or 'openai' (paid, highest quality)")
+    vlm_provider: str = Field(default="openai", description="VLM provider: 'openai' (recommended) or 'granite' (experimental)")
     vlm_model: str = Field(default="gpt-4.1-mini", description="OpenAI model to use when vlm_provider='openai'")
     vlm_api_key: Optional[str] = Field(default=None, description="Custom OpenAI API key (optional, uses default if not provided)")
 
