@@ -9,6 +9,8 @@ This provides serverless GPU-accelerated document processing with:
 - Automatic scaling based on demand
 - Pay-per-use pricing (only charged when processing)
 - Cold start optimization with model caching
+- OCR support for scanned documents
+- VLM support for advanced AI-powered parsing
 """
 
 import modal
@@ -40,6 +42,8 @@ docling_image = (
         "easyocr>=1.7.0",
         "python-multipart>=0.0.6",
         "fastapi[standard]",  # Required for web endpoints
+        "requests>=2.28.0",  # For VLM API calls
+        "python-dotenv>=1.0.0",
     )
     .env({
         "OMP_NUM_THREADS": "4",
@@ -52,66 +56,141 @@ model_cache = modal.Volume.from_name("docling-model-cache", create_if_missing=Tr
 
 
 # =============================================================================
-# Docling Processing Functions
+# Helper Functions
 # =============================================================================
 
-@app.function(
-    image=docling_image,
-    gpu="T4",                    # GPU type: T4, A10G, A100
-    timeout=600,                 # 10 minute max timeout
-    memory=16384,                # 16GB RAM
-    scaledown_window=120,        # Keep warm for 2 minutes
-    volumes={"/cache": model_cache},
-    allow_concurrent_inputs=10,  # Allow concurrent requests (limited by GPU memory)
-)
-def process_document(
-    file_bytes: bytes,
-    filename: str,
-    output_format: str = "markdown",
-    enable_ocr: bool = True,
+def create_converter(
+    enable_ocr: bool = False,
+    force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
-) -> dict:
+    enable_vlm: bool = False,
+    vlm_api_key: Optional[str] = None,
+    vlm_model: str = "gpt-4.1-mini",
+):
     """
-    Process a document and return structured output.
+    Create a DocumentConverter with the specified options.
     
     Args:
-        file_bytes: Raw bytes of the document file
-        filename: Original filename (used to determine file type)
-        output_format: Output format - 'markdown', 'json', or 'both'
-        enable_ocr: Whether to enable OCR for scanned documents
-        enable_table_extraction: Whether to extract table structures
+        enable_ocr: Enable OCR for text extraction from images
+        force_full_page_ocr: Force OCR on entire page (for scanned docs)
+        enable_table_extraction: Enable table structure extraction
+        enable_vlm: Use Vision Language Model for advanced parsing
+        vlm_api_key: API key for VLM service
+        vlm_model: VLM model name
     
     Returns:
-        dict with 'markdown', 'json', or both depending on output_format
+        Configured DocumentConverter instance
     """
-    import tempfile
-    import os
-    from docling.document_converter import DocumentConverter
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
     
-    # Set cache directory
+    # VLM takes precedence if enabled
+    if enable_vlm and vlm_api_key:
+        try:
+            from docling.datamodel.pipeline_options import VlmPipelineOptions
+            from docling.datamodel.pipeline_options_vlm_model import ApiVlmOptions, ResponseFormat
+            from docling.pipeline.vlm_pipeline import VlmPipeline
+            
+            pipeline_options = VlmPipelineOptions(enable_remote_services=True)
+            pipeline_options.vlm_options = ApiVlmOptions(
+                url="https://api.openai.com/v1/chat/completions",
+                params=dict(model=vlm_model, max_tokens=4096),
+                headers={"Authorization": f"Bearer {vlm_api_key}"},
+                prompt="Convert this page to markdown. Extract all text, tables, and describe images.",
+                timeout=90,
+                scale=2.0,
+                response_format=ResponseFormat.MARKDOWN,
+            )
+            
+            return DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_options=pipeline_options,
+                        pipeline_cls=VlmPipeline,
+                    )
+                }
+            )
+        except ImportError as e:
+            print(f"VLM pipeline not available, falling back to standard: {e}")
+    
+    # OCR pipeline
+    if enable_ocr:
+        pipeline_options = PdfPipelineOptions()
+        pipeline_options.do_ocr = True
+        pipeline_options.do_table_structure = enable_table_extraction
+        
+        ocr_options = EasyOcrOptions(force_full_page_ocr=force_full_page_ocr)
+        pipeline_options.ocr_options = ocr_options
+        
+        return DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+            }
+        )
+    
+    # Standard converter (no OCR, no VLM)
+    return DocumentConverter()
+
+
+def process_document_with_options(
+    source: str,
+    output_format: str = "markdown",
+    enable_ocr: bool = False,
+    force_full_page_ocr: bool = False,
+    enable_table_extraction: bool = True,
+    enable_vlm: bool = False,
+    vlm_api_key: Optional[str] = None,
+    vlm_model: str = "gpt-4.1-mini",
+    is_url: bool = True,
+    temp_path: Optional[str] = None,
+) -> dict:
+    """
+    Process a document with the specified options.
+    
+    Args:
+        source: URL or identifier for the document
+        output_format: 'markdown', 'json', or 'both'
+        enable_ocr: Enable OCR
+        force_full_page_ocr: Force full page OCR
+        enable_table_extraction: Enable table extraction
+        enable_vlm: Enable VLM
+        vlm_api_key: VLM API key
+        vlm_model: VLM model name
+        is_url: Whether source is a URL (True) or file path (False)
+        temp_path: Path to temp file (if processing file)
+    
+    Returns:
+        Processing result dict
+    """
+    import os
+    
+    # Set cache directories
     os.environ["HF_HOME"] = "/cache/huggingface"
     os.environ["TORCH_HOME"] = "/cache/torch"
     
-    # Get file extension
-    suffix = os.path.splitext(filename)[1].lower()
-    
-    # Write to temp file
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
-        f.write(file_bytes)
-        temp_path = f.name
-    
     try:
-        # Create converter
-        converter = DocumentConverter()
+        # Create converter with options
+        converter = create_converter(
+            enable_ocr=enable_ocr,
+            force_full_page_ocr=force_full_page_ocr,
+            enable_table_extraction=enable_table_extraction,
+            enable_vlm=enable_vlm,
+            vlm_api_key=vlm_api_key,
+            vlm_model=vlm_model,
+        )
         
         # Convert document
-        result = converter.convert(temp_path)
+        convert_source = source if is_url else temp_path
+        result = converter.convert(convert_source)
         
         # Build response
         response = {
             "status": "success",
-            "filename": filename,
+            "source": source,
             "pages": len(result.document.pages) if hasattr(result.document, 'pages') else 1,
+            "ocr_enabled": enable_ocr,
+            "vlm_enabled": enable_vlm,
         }
         
         if output_format in ("markdown", "both"):
@@ -125,125 +204,13 @@ def process_document(
     except Exception as e:
         return {
             "status": "error",
-            "filename": filename,
+            "source": source,
             "error": str(e),
         }
-    finally:
-        # Cleanup temp file
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
-@app.function(
-    image=docling_image,
-    gpu="T4",
-    timeout=600,
-    memory=16384,
-    scaledown_window=120,
-    volumes={"/cache": model_cache},
-    allow_concurrent_inputs=10,  # Allow concurrent requests (limited by GPU memory)
-)
-def process_url(
-    url: str,
-    output_format: str = "markdown",
-    enable_ocr: bool = True,
-    enable_table_extraction: bool = True,
-) -> dict:
-    """
-    Process a document from URL and return structured output.
-    
-    Args:
-        url: URL of the document to process
-        output_format: Output format - 'markdown', 'json', or 'both'
-        enable_ocr: Whether to enable OCR for scanned documents
-        enable_table_extraction: Whether to extract table structures
-    
-    Returns:
-        dict with processing results
-    """
-    import os
-    from docling.document_converter import DocumentConverter
-    
-    # Set cache directory
-    os.environ["HF_HOME"] = "/cache/huggingface"
-    os.environ["TORCH_HOME"] = "/cache/torch"
-    
-    try:
-        # Create converter
-        converter = DocumentConverter()
-        
-        # Convert document from URL
-        result = converter.convert(url)
-        
-        # Build response
-        response = {
-            "status": "success",
-            "source_url": url,
-            "pages": len(result.document.pages) if hasattr(result.document, 'pages') else 1,
-        }
-        
-        if output_format in ("markdown", "both"):
-            response["markdown"] = result.document.export_to_markdown()
-        
-        if output_format in ("json", "both"):
-            response["json"] = result.document.export_to_dict()
-        
-        return response
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "source_url": url,
-            "error": str(e),
-        }
-
-
-@app.function(
-    image=docling_image,
-    gpu="T4",
-    timeout=1800,  # 30 minutes for batch
-    memory=16384,
-    scaledown_window=120,
-    volumes={"/cache": model_cache},
-)
-def process_batch(
-    documents: list[dict],
-    output_format: str = "markdown",
-) -> list[dict]:
-    """
-    Process multiple documents in batch.
-    
-    Args:
-        documents: List of dicts with 'file_bytes' and 'filename', or 'url'
-        output_format: Output format for all documents
-    
-    Returns:
-        List of processing results
-    """
-    results = []
-    
-    for doc in documents:
-        if "url" in doc:
-            result = process_url.local(
-                url=doc["url"],
-                output_format=output_format,
-            )
-        elif "file_bytes" in doc and "filename" in doc:
-            result = process_document.local(
-                file_bytes=doc["file_bytes"],
-                filename=doc["filename"],
-                output_format=output_format,
-            )
-        else:
-            result = {"status": "error", "error": "Invalid document format"}
-        
-        results.append(result)
-    
-    return results
 
 
 # =============================================================================
-# Web Endpoint (for direct HTTP access)
+# Web Endpoints
 # =============================================================================
 
 @app.function(
@@ -253,27 +220,188 @@ def process_batch(
     memory=16384,
     scaledown_window=120,
     volumes={"/cache": model_cache},
-    allow_concurrent_inputs=10,  # Allow concurrent requests (limited by GPU memory)
+    allow_concurrent_inputs=10,
 )
 @modal.fastapi_endpoint(method="POST")
 def convert_endpoint(request: dict) -> dict:
     """
-    HTTP endpoint for document conversion.
+    HTTP endpoint for document conversion from URL.
     
     Request body:
-        - url: URL of document to process
+        - url: URL of document to process (required)
         - output_format: 'markdown', 'json', or 'both' (default: 'markdown')
+        - enable_ocr: Enable OCR for images (default: false)
+        - force_full_page_ocr: Force OCR on entire page (default: false)
+        - enable_table_extraction: Enable table extraction (default: true)
+        - enable_vlm: Use VLM for advanced parsing (default: false)
+        - vlm_api_key: API key for VLM (optional)
+        - vlm_model: VLM model name (default: 'gpt-4.1-mini')
     
     Returns:
         Processing result
     """
     url = request.get("url")
-    output_format = request.get("output_format", "markdown")
-    
     if not url:
         return {"status": "error", "error": "URL is required"}
     
-    return process_url.local(url=url, output_format=output_format)
+    return process_document_with_options(
+        source=url,
+        output_format=request.get("output_format", "markdown"),
+        enable_ocr=request.get("enable_ocr", False),
+        force_full_page_ocr=request.get("force_full_page_ocr", False),
+        enable_table_extraction=request.get("enable_table_extraction", True),
+        enable_vlm=request.get("enable_vlm", False),
+        vlm_api_key=request.get("vlm_api_key"),
+        vlm_model=request.get("vlm_model", "gpt-4.1-mini"),
+        is_url=True,
+    )
+
+
+@app.function(
+    image=docling_image,
+    gpu="T4",
+    timeout=600,
+    memory=16384,
+    scaledown_window=120,
+    volumes={"/cache": model_cache},
+    allow_concurrent_inputs=10,
+)
+@modal.fastapi_endpoint(method="POST")
+def convert_file_endpoint(request: dict) -> dict:
+    """
+    HTTP endpoint for file upload conversion (base64 encoded).
+    
+    Request body:
+        - file_base64: Base64-encoded file content (required)
+        - filename: Original filename (default: 'document.pdf')
+        - output_format: 'markdown', 'json', or 'both' (default: 'markdown')
+        - enable_ocr: Enable OCR for images (default: false)
+        - force_full_page_ocr: Force OCR on entire page (default: false)
+        - enable_table_extraction: Enable table extraction (default: true)
+        - enable_vlm: Use VLM for advanced parsing (default: false)
+        - vlm_api_key: API key for VLM (optional)
+        - vlm_model: VLM model name (default: 'gpt-4.1-mini')
+    
+    Returns:
+        Processing result
+    """
+    import base64
+    import tempfile
+    import os
+    
+    file_base64 = request.get("file_base64")
+    filename = request.get("filename", "document.pdf")
+    
+    if not file_base64:
+        return {"status": "error", "error": "file_base64 is required"}
+    
+    try:
+        # Decode base64 file
+        file_bytes = base64.b64decode(file_base64)
+        
+        # Get file extension
+        suffix = os.path.splitext(filename)[1].lower() or ".pdf"
+        
+        # Write to temp file
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+            f.write(file_bytes)
+            temp_path = f.name
+        
+        try:
+            result = process_document_with_options(
+                source=filename,
+                output_format=request.get("output_format", "markdown"),
+                enable_ocr=request.get("enable_ocr", False),
+                force_full_page_ocr=request.get("force_full_page_ocr", False),
+                enable_table_extraction=request.get("enable_table_extraction", True),
+                enable_vlm=request.get("enable_vlm", False),
+                vlm_api_key=request.get("vlm_api_key"),
+                vlm_model=request.get("vlm_model", "gpt-4.1-mini"),
+                is_url=False,
+                temp_path=temp_path,
+            )
+            return result
+            
+        finally:
+            # Cleanup temp file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+                
+    except Exception as e:
+        return {
+            "status": "error",
+            "filename": filename,
+            "error": str(e),
+        }
+
+
+# =============================================================================
+# Legacy Functions (for backwards compatibility)
+# =============================================================================
+
+@app.function(
+    image=docling_image,
+    gpu="T4",
+    timeout=600,
+    memory=16384,
+    scaledown_window=120,
+    volumes={"/cache": model_cache},
+    allow_concurrent_inputs=10,
+)
+def process_url(
+    url: str,
+    output_format: str = "markdown",
+    enable_ocr: bool = False,
+    enable_table_extraction: bool = True,
+) -> dict:
+    """Process a document from URL (legacy function)."""
+    return process_document_with_options(
+        source=url,
+        output_format=output_format,
+        enable_ocr=enable_ocr,
+        enable_table_extraction=enable_table_extraction,
+        is_url=True,
+    )
+
+
+@app.function(
+    image=docling_image,
+    gpu="T4",
+    timeout=600,
+    memory=16384,
+    scaledown_window=120,
+    volumes={"/cache": model_cache},
+    allow_concurrent_inputs=10,
+)
+def process_document(
+    file_bytes: bytes,
+    filename: str,
+    output_format: str = "markdown",
+    enable_ocr: bool = False,
+    enable_table_extraction: bool = True,
+) -> dict:
+    """Process a document from bytes (legacy function)."""
+    import tempfile
+    import os
+    
+    suffix = os.path.splitext(filename)[1].lower()
+    
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(file_bytes)
+        temp_path = f.name
+    
+    try:
+        return process_document_with_options(
+            source=filename,
+            output_format=output_format,
+            enable_ocr=enable_ocr,
+            enable_table_extraction=enable_table_extraction,
+            is_url=False,
+            temp_path=temp_path,
+        )
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 # =============================================================================
@@ -284,13 +412,23 @@ def convert_endpoint(request: dict) -> dict:
 def main(
     url: str = "https://arxiv.org/pdf/2501.17887",
     output_format: str = "markdown",
+    enable_ocr: bool = False,
+    enable_vlm: bool = False,
 ):
     """Test the Docling service with a sample document."""
     print(f"Processing document from: {url}")
-    result = process_url.remote(url=url, output_format=output_format)
+    print(f"Options: OCR={enable_ocr}, VLM={enable_vlm}")
+    
+    result = process_url.remote(
+        url=url, 
+        output_format=output_format,
+        enable_ocr=enable_ocr,
+    )
     
     if result["status"] == "success":
         print(f"\n✅ Successfully processed document ({result.get('pages', '?')} pages)")
+        print(f"   OCR enabled: {result.get('ocr_enabled', False)}")
+        print(f"   VLM enabled: {result.get('vlm_enabled', False)}")
         if "markdown" in result:
             print("\n--- Markdown Output (first 2000 chars) ---")
             print(result["markdown"][:2000])

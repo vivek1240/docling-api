@@ -59,6 +59,22 @@ class Settings(BaseSettings):
     )
     
     # -------------------------------------------------------------------------
+    # VLM (Vision Language Model) Configuration
+    # -------------------------------------------------------------------------
+    default_vlm_api_key: Optional[str] = Field(
+        default=None,
+        description="Default OpenAI API key for VLM (used when user doesn't provide one)",
+    )
+    default_vlm_model: str = Field(
+        default="gpt-4.1-mini",
+        description="Default VLM model to use",
+    )
+    vlm_api_base_url: str = Field(
+        default="https://api.openai.com/v1/chat/completions",
+        description="Base URL for VLM API",
+    )
+    
+    # -------------------------------------------------------------------------
     # Database Configuration
     # -------------------------------------------------------------------------
     database_url: str = Field(

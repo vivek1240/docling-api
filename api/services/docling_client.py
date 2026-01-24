@@ -120,7 +120,11 @@ class DoclingClient:
         start_time: float,
     ) -> Dict[str, Any]:
         """Convert document using Modal endpoint."""
+        settings = get_settings()
         output_format = options.output_format.value if options.output_format else "markdown"
+        
+        # Determine VLM API key (user's key or default)
+        vlm_api_key = options.vlm_api_key or settings.default_vlm_api_key
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -128,6 +132,14 @@ class DoclingClient:
                 json={
                     "url": url,
                     "output_format": output_format,
+                    # OCR options
+                    "enable_ocr": options.enable_ocr,
+                    "force_full_page_ocr": options.force_full_page_ocr,
+                    "enable_table_extraction": options.enable_table_extraction,
+                    # VLM options
+                    "enable_vlm": options.enable_vlm,
+                    "vlm_api_key": vlm_api_key,
+                    "vlm_model": options.vlm_model.value if hasattr(options.vlm_model, 'value') else options.vlm_model,
                 },
             )
             response.raise_for_status()
@@ -169,10 +181,11 @@ class DoclingClient:
         options = options or ConversionOptions()
         start_time = time.time()
         
-        # For Modal, we need to send the file differently
-        # For now, use local backend for file uploads
-        # (Modal file upload would require base64 encoding)
+        # Use Modal if configured
+        if self.use_modal and self.modal_endpoint:
+            return await self._convert_file_via_modal(file, filename, options, start_time)
         
+        # Use local Docker backend
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             # Docling expects 'files' (plural) as the field name
             files = {"files": (filename, file)}
@@ -187,6 +200,56 @@ class DoclingClient:
             processing_time = int((time.time() - start_time) * 1000)
             
             return self._format_result(result, filename, options, processing_time)
+    
+    async def _convert_file_via_modal(
+        self,
+        file: BinaryIO,
+        filename: str,
+        options: ConversionOptions,
+        start_time: float,
+    ) -> Dict[str, Any]:
+        """Convert file using Modal endpoint by base64 encoding."""
+        settings = get_settings()
+        output_format = options.output_format.value if options.output_format else "markdown"
+        
+        # Determine VLM API key (user's key or default)
+        vlm_api_key = options.vlm_api_key or settings.default_vlm_api_key
+        
+        # Read file and encode as base64
+        file_bytes = file.read()
+        file_base64 = base64.b64encode(file_bytes).decode('utf-8')
+        
+        # Send as JSON with base64 data and all options
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                self.modal_endpoint.replace("/convert_endpoint", "/convert_file_endpoint"),
+                json={
+                    "file_base64": file_base64,
+                    "filename": filename,
+                    "output_format": output_format,
+                    # OCR options
+                    "enable_ocr": options.enable_ocr,
+                    "force_full_page_ocr": options.force_full_page_ocr,
+                    "enable_table_extraction": options.enable_table_extraction,
+                    # VLM options
+                    "enable_vlm": options.enable_vlm,
+                    "vlm_api_key": vlm_api_key,
+                    "vlm_model": options.vlm_model.value if hasattr(options.vlm_model, 'value') else options.vlm_model,
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            processing_time = int((time.time() - start_time) * 1000)
+            
+            return {
+                "source": filename,
+                "status": result.get("status", "success"),
+                "pages": result.get("pages", 1),
+                "markdown": result.get("markdown"),
+                "json": result.get("json"),
+                "processing_time_ms": processing_time,
+            }
     
     @retry(
         stop=stop_after_attempt(3),

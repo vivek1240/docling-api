@@ -42,6 +42,15 @@ class PricingTier(str, Enum):
     ENTERPRISE = "enterprise"
 
 
+class VLMModel(str, Enum):
+    """Supported VLM models for document processing."""
+    GPT_5_MINI = "gpt-5-mini"
+    GPT_5_NANO = "gpt-5-nano"
+    GPT_4_1_MINI = "gpt-4.1-mini"
+    GPT_4_1_NANO = "gpt-4.1-nano"
+    O4_MINI = "o4-mini"
+
+
 # =============================================================================
 # API Key Models
 # =============================================================================
@@ -95,8 +104,16 @@ class DocumentSource(BaseModel):
 class ConversionOptions(BaseModel):
     """Options for document conversion."""
     output_format: OutputFormat = Field(default=OutputFormat.MARKDOWN, description="Output format")
-    enable_ocr: bool = Field(default=True, description="Enable OCR for scanned documents")
+    
+    # OCR Options
+    enable_ocr: bool = Field(default=False, description="Enable OCR to extract text from images")
+    force_full_page_ocr: bool = Field(default=False, description="Force OCR on entire page (for scanned docs)")
     enable_table_extraction: bool = Field(default=True, description="Extract table structures")
+    
+    # VLM Options (Vision Language Model for advanced parsing)
+    enable_vlm: bool = Field(default=False, description="Use Vision Language Model for advanced parsing")
+    vlm_model: VLMModel = Field(default=VLMModel.GPT_4_1_MINI, description="VLM model to use")
+    vlm_api_key: Optional[str] = Field(default=None, description="Custom VLM API key (optional, uses default if not provided)")
 
 
 class ConversionRequest(BaseModel):
