@@ -100,17 +100,11 @@ def create_converter(
             
             if vlm_provider == "granite":
                 # Use GraniteDocling - FREE, runs locally on GPU
-                from docling.datamodel import vlm_model_specs
-                
-                pipeline_options = VlmPipelineOptions(
-                    vlm_options=vlm_model_specs.GRANITEDOCLING,
-                )
-                
+                # Default VlmPipeline uses GraniteDocling model
                 return DocumentConverter(
                     format_options={
                         InputFormat.PDF: PdfFormatOption(
                             pipeline_cls=VlmPipeline,
-                            pipeline_options=pipeline_options,
                         )
                     }
                 )
@@ -141,15 +135,10 @@ def create_converter(
             else:
                 print(f"VLM provider '{vlm_provider}' requires API key, falling back to granite")
                 # Fallback to granite if openai requested but no key
-                from docling.datamodel import vlm_model_specs
-                pipeline_options = VlmPipelineOptions(
-                    vlm_options=vlm_model_specs.GRANITEDOCLING,
-                )
                 return DocumentConverter(
                     format_options={
                         InputFormat.PDF: PdfFormatOption(
                             pipeline_cls=VlmPipeline,
-                            pipeline_options=pipeline_options,
                         )
                     }
                 )
