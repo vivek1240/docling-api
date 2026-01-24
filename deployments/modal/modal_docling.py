@@ -23,7 +23,7 @@ import os
 
 app = modal.App("docling-service")
 
-# Base image with all dependencies
+# Base image with all dependencies (including VLM support)
 docling_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install(
@@ -39,15 +39,20 @@ docling_image = (
         "docling>=2.0.0",
         "docling-core>=2.0.0",
         "torch>=2.0.0",
+        "torchvision>=0.15.0",  # For VLM image processing
+        "transformers>=4.40.0",  # For GraniteDocling VLM
+        "accelerate>=0.30.0",  # For efficient model loading
         "easyocr>=1.7.0",
         "python-multipart>=0.0.6",
         "fastapi[standard]",  # Required for web endpoints
-        "requests>=2.28.0",  # For VLM API calls
+        "requests>=2.28.0",  # For OpenAI VLM API calls
         "python-dotenv>=1.0.0",
     )
     .env({
         "OMP_NUM_THREADS": "4",
         "MKL_NUM_THREADS": "4",
+        "HF_HOME": "/cache/huggingface",  # Cache HuggingFace models
+        "TORCH_HOME": "/cache/torch",
     })
 )
 
@@ -64,6 +69,7 @@ def create_converter(
     force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
     enable_vlm: bool = False,
+    vlm_provider: str = "granite",
     vlm_api_key: Optional[str] = None,
     vlm_model: str = "gpt-4.1-mini",
 ):
@@ -75,8 +81,9 @@ def create_converter(
         force_full_page_ocr: Force OCR on entire page (for scanned docs)
         enable_table_extraction: Enable table structure extraction
         enable_vlm: Use Vision Language Model for advanced parsing
-        vlm_api_key: API key for VLM service
-        vlm_model: VLM model name
+        vlm_provider: VLM provider - 'granite' (free, local) or 'openai' (paid, API)
+        vlm_api_key: API key for OpenAI VLM (required if vlm_provider='openai')
+        vlm_model: OpenAI model name (only used if vlm_provider='openai')
     
     Returns:
         Configured DocumentConverter instance
@@ -86,31 +93,67 @@ def create_converter(
     from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
     
     # VLM takes precedence if enabled
-    if enable_vlm and vlm_api_key:
+    if enable_vlm:
         try:
             from docling.datamodel.pipeline_options import VlmPipelineOptions
-            from docling.datamodel.pipeline_options_vlm_model import ApiVlmOptions, ResponseFormat
             from docling.pipeline.vlm_pipeline import VlmPipeline
             
-            pipeline_options = VlmPipelineOptions(enable_remote_services=True)
-            pipeline_options.vlm_options = ApiVlmOptions(
-                url="https://api.openai.com/v1/chat/completions",
-                params=dict(model=vlm_model, max_tokens=4096),
-                headers={"Authorization": f"Bearer {vlm_api_key}"},
-                prompt="Convert this page to markdown. Extract all text, tables, and describe images.",
-                timeout=90,
-                scale=2.0,
-                response_format=ResponseFormat.MARKDOWN,
-            )
+            if vlm_provider == "granite":
+                # Use GraniteDocling - FREE, runs locally on GPU
+                from docling.datamodel import vlm_model_specs
+                
+                pipeline_options = VlmPipelineOptions(
+                    vlm_options=vlm_model_specs.GRANITEDOCLING,
+                )
+                
+                return DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(
+                            pipeline_cls=VlmPipeline,
+                            pipeline_options=pipeline_options,
+                        )
+                    }
+                )
             
-            return DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=pipeline_options,
-                        pipeline_cls=VlmPipeline,
-                    )
-                }
-            )
+            elif vlm_provider == "openai" and vlm_api_key:
+                # Use OpenAI API - PAID, highest quality
+                from docling.datamodel.pipeline_options_vlm_model import ApiVlmOptions, ResponseFormat
+                
+                pipeline_options = VlmPipelineOptions(enable_remote_services=True)
+                pipeline_options.vlm_options = ApiVlmOptions(
+                    url="https://api.openai.com/v1/chat/completions",
+                    params=dict(model=vlm_model, max_tokens=4096),
+                    headers={"Authorization": f"Bearer {vlm_api_key}"},
+                    prompt="Convert this page to markdown. Extract all text, tables, and describe images.",
+                    timeout=90,
+                    scale=2.0,
+                    response_format=ResponseFormat.MARKDOWN,
+                )
+                
+                return DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(
+                            pipeline_options=pipeline_options,
+                            pipeline_cls=VlmPipeline,
+                        )
+                    }
+                )
+            else:
+                print(f"VLM provider '{vlm_provider}' requires API key, falling back to granite")
+                # Fallback to granite if openai requested but no key
+                from docling.datamodel import vlm_model_specs
+                pipeline_options = VlmPipelineOptions(
+                    vlm_options=vlm_model_specs.GRANITEDOCLING,
+                )
+                return DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(
+                            pipeline_cls=VlmPipeline,
+                            pipeline_options=pipeline_options,
+                        )
+                    }
+                )
+                
         except ImportError as e:
             print(f"VLM pipeline not available, falling back to standard: {e}")
     
@@ -140,6 +183,7 @@ def process_document_with_options(
     force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
     enable_vlm: bool = False,
+    vlm_provider: str = "granite",
     vlm_api_key: Optional[str] = None,
     vlm_model: str = "gpt-4.1-mini",
     is_url: bool = True,
@@ -155,8 +199,9 @@ def process_document_with_options(
         force_full_page_ocr: Force full page OCR
         enable_table_extraction: Enable table extraction
         enable_vlm: Enable VLM
-        vlm_api_key: VLM API key
-        vlm_model: VLM model name
+        vlm_provider: VLM provider - 'granite' (free) or 'openai' (paid)
+        vlm_api_key: VLM API key (for OpenAI)
+        vlm_model: VLM model name (for OpenAI)
         is_url: Whether source is a URL (True) or file path (False)
         temp_path: Path to temp file (if processing file)
     
@@ -176,6 +221,7 @@ def process_document_with_options(
             force_full_page_ocr=force_full_page_ocr,
             enable_table_extraction=enable_table_extraction,
             enable_vlm=enable_vlm,
+            vlm_provider=vlm_provider,
             vlm_api_key=vlm_api_key,
             vlm_model=vlm_model,
         )
@@ -191,6 +237,7 @@ def process_document_with_options(
             "pages": len(result.document.pages) if hasattr(result.document, 'pages') else 1,
             "ocr_enabled": enable_ocr,
             "vlm_enabled": enable_vlm,
+            "vlm_provider": vlm_provider if enable_vlm else None,
         }
         
         if output_format in ("markdown", "both"):
@@ -234,8 +281,9 @@ def convert_endpoint(request: dict) -> dict:
         - force_full_page_ocr: Force OCR on entire page (default: false)
         - enable_table_extraction: Enable table extraction (default: true)
         - enable_vlm: Use VLM for advanced parsing (default: false)
-        - vlm_api_key: API key for VLM (optional)
-        - vlm_model: VLM model name (default: 'gpt-4.1-mini')
+        - vlm_provider: 'granite' (free, local GPU) or 'openai' (paid) (default: 'granite')
+        - vlm_api_key: API key for OpenAI VLM (optional, required if vlm_provider='openai')
+        - vlm_model: OpenAI model name (default: 'gpt-4.1-mini')
     
     Returns:
         Processing result
@@ -251,6 +299,7 @@ def convert_endpoint(request: dict) -> dict:
         force_full_page_ocr=request.get("force_full_page_ocr", False),
         enable_table_extraction=request.get("enable_table_extraction", True),
         enable_vlm=request.get("enable_vlm", False),
+        vlm_provider=request.get("vlm_provider", "granite"),
         vlm_api_key=request.get("vlm_api_key"),
         vlm_model=request.get("vlm_model", "gpt-4.1-mini"),
         is_url=True,
@@ -279,8 +328,9 @@ def convert_file_endpoint(request: dict) -> dict:
         - force_full_page_ocr: Force OCR on entire page (default: false)
         - enable_table_extraction: Enable table extraction (default: true)
         - enable_vlm: Use VLM for advanced parsing (default: false)
-        - vlm_api_key: API key for VLM (optional)
-        - vlm_model: VLM model name (default: 'gpt-4.1-mini')
+        - vlm_provider: 'granite' (free, local GPU) or 'openai' (paid) (default: 'granite')
+        - vlm_api_key: API key for OpenAI VLM (optional, required if vlm_provider='openai')
+        - vlm_model: OpenAI model name (default: 'gpt-4.1-mini')
     
     Returns:
         Processing result
@@ -315,6 +365,7 @@ def convert_file_endpoint(request: dict) -> dict:
                 force_full_page_ocr=request.get("force_full_page_ocr", False),
                 enable_table_extraction=request.get("enable_table_extraction", True),
                 enable_vlm=request.get("enable_vlm", False),
+                vlm_provider=request.get("vlm_provider", "granite"),
                 vlm_api_key=request.get("vlm_api_key"),
                 vlm_model=request.get("vlm_model", "gpt-4.1-mini"),
                 is_url=False,

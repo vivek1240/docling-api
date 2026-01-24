@@ -123,7 +123,7 @@ class DoclingClient:
         settings = get_settings()
         output_format = options.output_format.value if options.output_format else "markdown"
         
-        # Determine VLM API key (user's key or default)
+        # Determine VLM API key (user's key or default) - only needed for OpenAI provider
         vlm_api_key = options.vlm_api_key or settings.default_vlm_api_key
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -138,6 +138,7 @@ class DoclingClient:
                     "enable_table_extraction": options.enable_table_extraction,
                     # VLM options
                     "enable_vlm": options.enable_vlm,
+                    "vlm_provider": options.vlm_provider,
                     "vlm_api_key": vlm_api_key,
                     "vlm_model": options.vlm_model,
                 },
@@ -212,7 +213,7 @@ class DoclingClient:
         settings = get_settings()
         output_format = options.output_format.value if options.output_format else "markdown"
         
-        # Determine VLM API key (user's key or default)
+        # Determine VLM API key (user's key or default) - only needed for OpenAI provider
         vlm_api_key = options.vlm_api_key or settings.default_vlm_api_key
         
         # Read file and encode as base64
@@ -233,6 +234,7 @@ class DoclingClient:
                     "enable_table_extraction": options.enable_table_extraction,
                     # VLM options
                     "enable_vlm": options.enable_vlm,
+                    "vlm_provider": options.vlm_provider,
                     "vlm_api_key": vlm_api_key,
                     "vlm_model": options.vlm_model,
                 },
@@ -294,6 +296,7 @@ class DoclingClient:
                         "enable_table_extraction": options.enable_table_extraction,
                         # VLM options
                         "enable_vlm": options.enable_vlm,
+                        "vlm_provider": options.vlm_provider,
                         "vlm_api_key": vlm_api_key,
                         "vlm_model": options.vlm_model,
                     },

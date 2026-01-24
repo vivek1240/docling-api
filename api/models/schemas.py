@@ -42,8 +42,14 @@ class PricingTier(str, Enum):
     ENTERPRISE = "enterprise"
 
 
+class VLMProvider(str, Enum):
+    """VLM provider options."""
+    GRANITE = "granite"    # Free, runs locally on Modal GPU (IBM GraniteDocling)
+    OPENAI = "openai"      # Paid, uses OpenAI API (GPT-4.1-mini, etc.)
+
+
 class VLMModel(str, Enum):
-    """Supported VLM models for document processing."""
+    """Supported VLM models for OpenAI provider."""
     GPT_5_MINI = "gpt-5-mini"
     GPT_5_NANO = "gpt-5-nano"
     GPT_4_1_MINI = "gpt-4.1-mini"
@@ -112,8 +118,9 @@ class ConversionOptions(BaseModel):
     
     # VLM Options (Vision Language Model for advanced parsing)
     enable_vlm: bool = Field(default=False, description="Use Vision Language Model for advanced parsing")
-    vlm_model: str = Field(default="gpt-4.1-mini", description="VLM model to use (gpt-4.1-mini, gpt-5-mini, gpt-5-nano, gpt-4.1-nano, o4-mini)")
-    vlm_api_key: Optional[str] = Field(default=None, description="Custom VLM API key (optional, uses default if not provided)")
+    vlm_provider: str = Field(default="granite", description="VLM provider: 'granite' (free, local GPU) or 'openai' (paid, highest quality)")
+    vlm_model: str = Field(default="gpt-4.1-mini", description="OpenAI model to use when vlm_provider='openai'")
+    vlm_api_key: Optional[str] = Field(default=None, description="Custom OpenAI API key (optional, uses default if not provided)")
 
 
 class ConversionRequest(BaseModel):
