@@ -245,6 +245,37 @@ def process_document_with_options(
 
 
 # =============================================================================
+# Health/Ping Endpoint (for keeping container warm)
+# =============================================================================
+
+@app.function(
+    image=docling_image,
+    gpu="T4",
+    timeout=30,
+    memory=16384,
+    scaledown_window=300,  # Keep alive for 5 minutes after ping
+    volumes={"/cache": model_cache},
+)
+@modal.fastapi_endpoint(method="GET")
+def ping() -> dict:
+    """
+    Lightweight ping endpoint to keep the container warm.
+    
+    Call this every 4 minutes to prevent cold starts.
+    Cost: ~$0.01 per ping (few seconds of T4 GPU time)
+    
+    Returns:
+        Simple status response
+    """
+    import torch
+    return {
+        "status": "warm",
+        "gpu_available": torch.cuda.is_available(),
+        "message": "Container is ready for requests"
+    }
+
+
+# =============================================================================
 # Web Endpoints
 # =============================================================================
 
@@ -253,7 +284,7 @@ def process_document_with_options(
     gpu="T4",
     timeout=600,
     memory=16384,
-    scaledown_window=120,
+    scaledown_window=300,  # Increased to 5 minutes
     volumes={"/cache": model_cache},
     allow_concurrent_inputs=10,
 )
@@ -299,7 +330,7 @@ def convert_endpoint(request: dict) -> dict:
     gpu="T4",
     timeout=600,
     memory=16384,
-    scaledown_window=120,
+    scaledown_window=300,  # 5 minutes - ping every 4 min to stay warm
     volumes={"/cache": model_cache},
     allow_concurrent_inputs=10,
 )
@@ -383,7 +414,7 @@ def convert_file_endpoint(request: dict) -> dict:
     gpu="T4",
     timeout=600,
     memory=16384,
-    scaledown_window=120,
+    scaledown_window=300,  # 5 minutes - ping every 4 min to stay warm
     volumes={"/cache": model_cache},
     allow_concurrent_inputs=10,
 )
@@ -408,7 +439,7 @@ def process_url(
     gpu="T4",
     timeout=600,
     memory=16384,
-    scaledown_window=120,
+    scaledown_window=300,  # 5 minutes - ping every 4 min to stay warm
     volumes={"/cache": model_cache},
     allow_concurrent_inputs=10,
 )
