@@ -7,7 +7,7 @@ Core document conversion endpoints with database-backed credit tracking.
 
 import time
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status, Request
 
@@ -139,6 +139,7 @@ async def convert_from_file(
     output_format: OutputFormat = OutputFormat.MARKDOWN,
     enable_ocr: bool = False,
     force_full_page_ocr: bool = False,
+    ocr_languages: Optional[str] = None,
     enable_vlm: bool = False,
     vlm_provider: str = "openai",
     vlm_api_key: Optional[str] = None,
@@ -178,10 +179,17 @@ async def convert_from_file(
     await file.seek(0)
     
     client = get_docling_client()
+    
+    # Parse ocr_languages from comma-separated string to list
+    parsed_ocr_languages = None
+    if ocr_languages:
+        parsed_ocr_languages = [lang.strip() for lang in ocr_languages.split(",")]
+    
     options = ConversionOptions(
         output_format=output_format,
         enable_ocr=enable_ocr,
         force_full_page_ocr=force_full_page_ocr,
+        ocr_languages=parsed_ocr_languages,
         enable_vlm=enable_vlm,
         vlm_provider=vlm_provider,
         vlm_api_key=vlm_api_key,

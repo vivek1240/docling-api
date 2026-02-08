@@ -114,6 +114,7 @@ class ConversionOptions(BaseModel):
     # OCR Options
     enable_ocr: bool = Field(default=False, description="Enable OCR to extract text from images")
     force_full_page_ocr: bool = Field(default=False, description="Force OCR on entire page (for scanned docs)")
+    ocr_languages: Optional[List[str]] = Field(default=None, description="OCR languages (e.g. ['en', 'hi', 'mr']). Default: ['fr', 'de', 'es', 'en']. See EasyOCR supported languages.")
     enable_table_extraction: bool = Field(default=True, description="Extract table structures")
     
     # VLM Options (Vision Language Model for advanced parsing)

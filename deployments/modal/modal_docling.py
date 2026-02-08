@@ -68,6 +68,7 @@ def create_converter(
     enable_ocr: bool = False,
     force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
+    ocr_languages: Optional[list] = None,
     enable_vlm: bool = False,
     vlm_provider: str = "openai",
     vlm_api_key: Optional[str] = None,
@@ -151,7 +152,11 @@ def create_converter(
         pipeline_options.do_ocr = True
         pipeline_options.do_table_structure = enable_table_extraction
         
-        ocr_options = EasyOcrOptions(force_full_page_ocr=force_full_page_ocr)
+        # Configure OCR with language support
+        ocr_kwargs = {"force_full_page_ocr": force_full_page_ocr}
+        if ocr_languages:
+            ocr_kwargs["lang"] = ocr_languages
+        ocr_options = EasyOcrOptions(**ocr_kwargs)
         pipeline_options.ocr_options = ocr_options
         
         return DocumentConverter(
@@ -170,6 +175,7 @@ def process_document_with_options(
     enable_ocr: bool = False,
     force_full_page_ocr: bool = False,
     enable_table_extraction: bool = True,
+    ocr_languages: Optional[list] = None,
     enable_vlm: bool = False,
     vlm_provider: str = "openai",
     vlm_api_key: Optional[str] = None,
@@ -208,6 +214,7 @@ def process_document_with_options(
             enable_ocr=enable_ocr,
             force_full_page_ocr=force_full_page_ocr,
             enable_table_extraction=enable_table_extraction,
+            ocr_languages=ocr_languages,
             enable_vlm=enable_vlm,
             vlm_provider=vlm_provider,
             vlm_api_key=vlm_api_key,
@@ -317,6 +324,7 @@ def convert_endpoint(request: dict) -> dict:
         enable_ocr=request.get("enable_ocr", False),
         force_full_page_ocr=request.get("force_full_page_ocr", False),
         enable_table_extraction=request.get("enable_table_extraction", True),
+        ocr_languages=request.get("ocr_languages"),
         enable_vlm=request.get("enable_vlm", False),
         vlm_provider=request.get("vlm_provider", "openai"),
         vlm_api_key=request.get("vlm_api_key"),
@@ -383,6 +391,7 @@ def convert_file_endpoint(request: dict) -> dict:
                 enable_ocr=request.get("enable_ocr", False),
                 force_full_page_ocr=request.get("force_full_page_ocr", False),
                 enable_table_extraction=request.get("enable_table_extraction", True),
+                ocr_languages=request.get("ocr_languages"),
                 enable_vlm=request.get("enable_vlm", False),
                 vlm_provider=request.get("vlm_provider", "openai"),
                 vlm_api_key=request.get("vlm_api_key"),

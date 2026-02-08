@@ -135,6 +135,7 @@ class DoclingClient:
                     # OCR options
                     "enable_ocr": options.enable_ocr,
                     "force_full_page_ocr": options.force_full_page_ocr,
+                    "ocr_languages": options.ocr_languages,
                     "enable_table_extraction": options.enable_table_extraction,
                     # VLM options
                     "enable_vlm": options.enable_vlm,
@@ -231,6 +232,7 @@ class DoclingClient:
                     # OCR options
                     "enable_ocr": options.enable_ocr,
                     "force_full_page_ocr": options.force_full_page_ocr,
+                    "ocr_languages": options.ocr_languages,
                     "enable_table_extraction": options.enable_table_extraction,
                     # VLM options
                     "enable_vlm": options.enable_vlm,
@@ -293,6 +295,7 @@ class DoclingClient:
                         # OCR options
                         "enable_ocr": options.enable_ocr,
                         "force_full_page_ocr": options.force_full_page_ocr,
+                        "ocr_languages": options.ocr_languages,
                         "enable_table_extraction": options.enable_table_extraction,
                         # VLM options
                         "enable_vlm": options.enable_vlm,
