@@ -34,6 +34,17 @@ docling_image = (
         "libxrender-dev",
         "libgomp1",
         "poppler-utils",  # For PDF processing
+        # Tesseract OCR with language packs
+        "tesseract-ocr",
+        "tesseract-ocr-eng",  # English
+        "tesseract-ocr-hin",  # Hindi
+        "tesseract-ocr-mar",  # Marathi
+        "tesseract-ocr-tam",  # Tamil
+        "tesseract-ocr-tel",  # Telugu
+        "tesseract-ocr-ben",  # Bengali
+        "tesseract-ocr-guj",  # Gujarati
+        "tesseract-ocr-kan",  # Kannada
+        "tesseract-ocr-pan",  # Punjabi
     )
     .pip_install(
         "docling>=2.0.0",
@@ -91,7 +102,7 @@ def create_converter(
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
-    from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions, TesseractOcrOptions
     
     # VLM takes precedence if enabled
     if enable_vlm:
@@ -152,11 +163,11 @@ def create_converter(
         pipeline_options.do_ocr = True
         pipeline_options.do_table_structure = enable_table_extraction
         
-        # Configure OCR with language support
-        ocr_kwargs = {"force_full_page_ocr": force_full_page_ocr}
-        if ocr_languages:
-            ocr_kwargs["lang"] = ocr_languages
-        ocr_options = EasyOcrOptions(**ocr_kwargs)
+        # Use Tesseract OCR (much better for multilingual docs)
+        ocr_options = TesseractOcrOptions(
+            lang=["eng", "hin", "mar"],  # English + Hindi + Marathi
+            force_full_page_ocr=force_full_page_ocr,
+        )
         pipeline_options.ocr_options = ocr_options
         
         return DocumentConverter(
