@@ -175,8 +175,12 @@ async def convert_from_file(
             detail=f"File too large. Maximum size: {settings.max_file_size // 1024 // 1024}MB",
         )
     
-    # Reset file position for reading
+    # Reset file position for reading  
     await file.seek(0)
+    
+    # Also reset the underlying file object position
+    if hasattr(file.file, "seek"):
+        file.file.seek(0)
     
     client = get_docling_client()
     
