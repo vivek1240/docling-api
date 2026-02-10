@@ -156,6 +156,7 @@ class DoclingClient:
                 "pages": result.get("pages", 1),
                 "markdown": result.get("markdown"),
                 "json": result.get("json"),
+                "error": result.get("error"),
                 "processing_time_ms": processing_time,
             }
     
@@ -252,6 +253,7 @@ class DoclingClient:
                 "pages": result.get("pages", 1),
                 "markdown": result.get("markdown"),
                 "json": result.get("json"),
+                "error": result.get("error"),
                 "processing_time_ms": processing_time,
             }
     
@@ -315,6 +317,7 @@ class DoclingClient:
                     "pages": result.get("pages", 1),
                     "markdown": result.get("markdown"),
                     "json": result.get("json"),
+                    "error": result.get("error"),
                     "processing_time_ms": processing_time,
                 }
         
