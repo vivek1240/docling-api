@@ -175,12 +175,9 @@ async def convert_from_file(
             detail=f"File too large. Maximum size: {settings.max_file_size // 1024 // 1024}MB",
         )
     
-    # Reset file position for reading  
-    await file.seek(0)
-    
-    # Also reset the underlying file object position
-    if hasattr(file.file, "seek"):
-        file.file.seek(0)
+    # Use already-read bytes (avoids file position issues)
+    import io
+    file_bytes_io = io.BytesIO(file_content)
     
     client = get_docling_client()
     
@@ -201,7 +198,7 @@ async def convert_from_file(
     )
     
     try:
-        result = await client.convert_from_file(file.file, file.filename or "document", options)
+        result = await client.convert_from_file(file_bytes_io, file.filename or "document", options)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
